@@ -1,0 +1,931 @@
+// DnD3pt5.cpp : Defines the entry point for the console application.
+//
+
+#include "stdafx.h"
+#include <iostream>
+#include <time.h>
+#include <iomanip>
+#include <string>
+#include <fstream>
+
+using namespace std;
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Constant and important game variables %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+int Level = 0, EXP = 0, Size = 0, BaseSpeed = 0, SpeedPenalty = 0, STR = 0, DEX = 0, CON = 0, INT = 0, WIS = 0, CHA = 0;
+int AC = 0;
+int Gold = 0;
+double STRMOD, DEXMOD, CONMOD, INTMOD, WISMOD, CHAMOD;
+int TotalItems = 0;
+
+const int MAXITEMS = 100;
+const int MAXCHAR = 20;
+
+char CharClass[MAXCHAR];
+char CharRace[MAXCHAR];
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Constant and important game variables %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+class Armor
+{
+private:
+	string Type;
+	string Name;
+	int Cost;
+	int ACBonus;
+	int MaxDex;
+	int CheckPenalty;
+	int Weight;
+public:
+	void setArmorData(string T, string N, int C, int AC, int MD, int CP, int W)
+	{
+		Type = T;
+		Name = N;
+		Cost = C;
+		ACBonus = AC;
+		MaxDex = MD;
+		CheckPenalty = CP;
+		Weight = W;
+	}
+	void showArmorData()
+	{
+		cout << Type << endl << Name << endl
+			<< setw(6) << "Cost: " << Cost << " GP" << endl
+			<< setw(6) << "ACBonus: " << ACBonus << endl
+			<< setw(6) << "MaxDex: " << MaxDex << endl
+			<< setw(6) << "CheckPenalty: " << CheckPenalty << endl
+			<< setw(6) << "Weight: " << Weight << endl << endl;
+	}
+	void checkCost()
+	{
+		cout << "Item cost is " << Cost << ". Is this okay? (Y/N)" << endl;
+	}
+	string getType()
+	{
+		return Type;
+	}
+	string getName()
+	{
+		return Name;
+	}
+	int getCost()
+	{
+		return Cost;
+	}
+	int getACBonus()
+	{
+		return ACBonus;
+	}
+	int getMaxDex()
+	{
+		return MaxDex;
+	}
+	int getCheckPenalty()
+	{
+		return CheckPenalty;
+	}
+	int getWeight()
+	{
+		return Weight;
+	}
+};
+
+class OwnedItems
+{
+private:
+	string Type;
+	string Name;
+	int Cost;
+	int ACBonus;
+	int MaxDex;
+	int CheckPenalty;
+	int Weight;
+public:
+	void setItemData(string T, string N, int C, int AC, int MD, int CP, int W)
+	{
+		Type = T;
+		Name = N;
+		Cost = C;
+		ACBonus = AC;
+		MaxDex = MD;
+		CheckPenalty = CP;
+		Weight = W;
+	}
+	void showItemData()
+	{
+		cout << Type << endl << Name << endl
+			<< setw(6) << "Cost: " << Cost << " GP" << endl
+			<< setw(6) << "ACBonus: " << ACBonus << endl
+			<< setw(6) << "MaxDex: " << MaxDex << endl
+			<< setw(6) << "CheckPenalty: " << CheckPenalty << endl
+			<< setw(6) << "Weight: " << Weight << endl << endl;
+	}
+	int getCost()
+	{
+		return Cost;
+	}
+	int getACBonus()
+	{
+		return ACBonus;
+	}
+	int getMaxDex()
+	{
+		return MaxDex;
+	}
+	int getCheckPenalty()
+	{
+		return CheckPenalty;
+	}
+	int getWeight()
+	{
+		return Weight;
+	}
+};
+enum size	//table of the sizes and their size modifier for AC and BAB
+{
+	Colossal = -8,		//hide x2
+	Gargantuan = -4,	//hide x3
+	Huge = -2,			//hide x4
+	Large = -1,			//hide x4
+	Medium = 0,			//no hide change
+	Small = 1,			//hide x4
+	Tiny = 2,			//hide x4
+	Diminutive = 4,		//hide x3
+	Fine = 8,			//hide x2
+};
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Class Data %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+int FighterLevelChart[3][5] =
+{
+	{1, 1, 2, 0, 0},
+	{2, 2, 3, 0, 0},
+	{3, 3, 3, 1, 1}
+};
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Function Prototypes %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+void rollstats();								//rolls 6 random stats and allows the user to enter pick where they go
+void classselection();							//allows the user to select a class
+void raceselection();							//allows the user to select a race
+bool usablestat(int, int[6]);					//checks to see if entered stat was one that was rolled
+bool loadgame();								//loads the data for the user's character
+void savegame();								//saves the character data
+void getstatmod();								//calculates the stat mods and stores them for future use
+void getAC();									//calculate the AC value of the character
+void levelup();									//check to see if character can level up and takes care of it
+void displaycharacterdata();					//displays the current character data
+void armory(Armor[], int, OwnedItems[]);		//allows the player to buy weapons and armor
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MAIN CODE LOCATED HERE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+int main()
+{
+	Armor armordata[MAXITEMS];
+	OwnedItems items[MAXITEMS];
+	int selection, townmenu;
+	int armordatacount = 0;
+	bool gamestarted = false;
+	srand(time(NULL));
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Load Game Data Needed %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	cout << "Loading game. Please wait..." << endl;
+	ifstream armorvalues("Armor.txt");
+	if (!armorvalues)
+	{
+		cout << "Error Loading files";
+		return 0;
+	}
+	string Type, Name; int Cost, AC, MaxDex, CheckPenalty, Weight;
+	while (!armorvalues.eof())
+	{
+		armorvalues >> ws;
+		getline(armorvalues, Type);
+		getline(armorvalues, Name);
+		armorvalues >> Cost;
+		armorvalues >> AC;
+		armorvalues >> MaxDex;
+		armorvalues >> CheckPenalty;
+		armorvalues >> Weight;
+		armordata[armordatacount].setArmorData(Type, Name, Cost, AC, MaxDex, CheckPenalty, Weight);
+		armordatacount++;
+	}
+	armorvalues.close();
+	cout << "Done loading." << endl << endl;
+	//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Load Game Data Needed %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	cout << "Dungeons and Dragons 3.5 Edition" << endl << "Programed by Tristan Bressler" << endl << endl;
+	while (!gamestarted)
+	{
+		cout << "1. New Game" << endl << "2. Continue" << endl << "Enter number of menu option" << endl << ">>";
+		cin >> selection;
+		switch (selection)
+		{
+		case 1: //New Game selected
+			rollstats();
+			raceselection();
+			classselection();
+			Level++;
+			getstatmod();
+			gamestarted = true;
+			break;
+
+		case 2: //Continue selected
+			if (loadgame())
+				gamestarted = true;
+			else
+				cout << "No files to load!" << endl;
+			break;
+
+		default:
+			cout << "Invalid selection" << endl << endl;
+		}
+	}
+
+	while (true)
+	{
+		system("CLS");
+		cout << "You are currently in town. What would you like to do?" << endl
+			<< "1. Leave town and fight enemies" << endl
+			<< "2. Visit the Armory" << endl
+			<< "3. Visit the Enchanter" << endl
+			<< "4. Visit the Alchemist" << endl
+			<< "5. Visit the Inn" << endl
+			<< "6. Find a Church" << endl
+			<< "7. Check Charactersheet" << endl
+			<< "8. Save Game" << endl
+			<< "9. Load Game" << endl << ">>";
+		cin >> townmenu;
+		switch (townmenu)
+		{
+		case 1: //Leave town and fight enemies selected
+			break;
+
+		case 2: //Visit the Armory selected
+			armory(armordata, armordatacount, items);
+			break;
+
+		case 3:	//Visit the Enchanter selected
+			break;
+
+		case 4: //Visit the Alchemist selected
+			break;
+
+		case 5: //Visit the Inn selected
+			break;
+
+		case 6: //Find a Church selected
+			break;
+
+		case 7: //Check Charactersheet selected
+			displaycharacterdata();
+			break;
+
+		case 8: //Save Game selected
+			savegame();
+			break;
+
+		case 9: //Load Game selected
+			loadgame();
+			break;
+
+		default:
+			cout << "Invalid selection" << endl;
+		}
+	}
+
+	system("Pause");	//This will only happen for debugging. Users shouldn't ever see this. If that happens, then there is an error.
+	return 0;
+}
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MAIN CODE LOCATED HERE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+bool loadgame()
+{
+	ifstream gamedata("character.txt");
+
+	if (!gamedata)
+		return false;
+
+	while (gamedata.eof())
+	{
+		gamedata >> Level >> EXP;
+		gamedata >> ws;
+		gamedata.getline(CharClass, MAXCHAR);
+		gamedata.getline(CharRace, MAXCHAR);
+		gamedata >> Gold >> Size >> BaseSpeed >> SpeedPenalty >> STR >> DEX >> CON >> INT >> WIS >> CHA;
+	}
+	cout << "Game Loaded" << endl;
+
+	system("Pause");
+	return true;
+}
+
+void savegame()
+{
+	ofstream gamedata("character.txt");
+
+	gamedata << Level;
+	gamedata << EXP;
+	gamedata << CharClass;
+	gamedata << CharRace;
+	gamedata << Gold;
+	gamedata << Size;
+	gamedata << BaseSpeed;
+	gamedata << SpeedPenalty;
+	gamedata << STR;
+	gamedata << DEX;
+	gamedata << CON;
+	gamedata << INT;
+	gamedata << WIS;
+	gamedata << CHA;
+
+	cout << "Game saved" << endl;
+
+	system("Pause");
+	return;
+}
+
+void rollstats()	//rolls 6 random stats and allows the user to enter pick where they go
+{
+	int Roll[6], UseRoll[6], R1, R2, R3, R4, smallest;
+	bool statsselected = false;
+	bool keeproll = false, validchar = false, validstat = false;
+	char user;
+
+	while (!statsselected)
+	{
+		while (!keeproll)
+		{
+			cout << endl;
+			for (int i = 0; i < 6; i++)
+			{
+				R1 = (rand() % 6 + 1);
+				R2 = (rand() % 6 + 1);
+				R3 = (rand() % 6 + 1);
+				R4 = (rand() % 6 + 1);
+
+				smallest = R1;
+				if (R2 < smallest)
+					smallest = R2;
+				if (R3 < smallest)
+					smallest = R3;
+				if (R4 < smallest)
+					smallest = R4;
+
+				Roll[i] = R1 + R2 + R3 + R4 - smallest;
+				cout << Roll[i] << endl;
+
+			}
+			validchar = false;
+			while (!validchar)
+			{
+				cout << "Keep these rolls? (Y/N)" << endl << ">>";
+				cin >> ws;
+				user = getchar();
+				user = toupper(user);
+
+				if (!(user == 'Y' || user == 'N'))
+					cout << "invalid character" << endl << endl;
+				else
+					if (user == 'Y')
+					{
+						validchar = true;
+						keeproll = true;
+					}
+					else
+					{
+						validchar = true;
+						keeproll = false;
+					}
+			}
+		}
+		for (int i = 0; i < 6; i++)
+			UseRoll[i] = Roll[i];		//make a copy of the array (for stat selection purposes)
+		validstat = false;			//pick where each stat goes
+		while (!validstat)
+		{
+			cout << endl << "Pick for STR stat" << endl << ">>";
+			cin >> STR;
+			validstat = usablestat(STR, UseRoll);
+			if (!validstat)
+				cout << "Invalid selection" << endl;
+		}
+
+		validstat = false;
+		while (!validstat)
+		{
+			cout << endl << "Pick for DEX stat" << endl << ">>";
+			cin >> DEX;
+			validstat = usablestat(DEX, UseRoll);
+			if (!validstat)
+				cout << "Invalid selection" << endl;
+		}
+
+		validstat = false;
+		while (!validstat)
+		{
+			cout << endl << "Pick for CON stat" << endl << ">>";
+			cin >> CON;
+			validstat = usablestat(CON, UseRoll);
+			if (!validstat)
+				cout << "Invalid selection" << endl;
+		}
+
+		validstat = false;
+		while (!validstat)
+		{
+			cout << endl << "Pick for INT stat" << endl << ">>";
+			cin >> INT;
+			validstat = usablestat(INT, UseRoll);
+			if (!validstat)
+				cout << "Invalid selection" << endl;
+		}
+
+		validstat = false;
+		while (!validstat)
+		{
+			cout << endl << "Pick for WIS stat" << endl << ">>";
+			cin >> WIS;
+			validstat = usablestat(WIS, UseRoll);
+			if (!validstat)
+				cout << "Invalid selection" << endl;
+		}
+
+		validstat = false;
+		while (!validstat)
+		{
+			cout << endl << "Pick for CHA stat" << endl << ">>";
+			cin >> CHA;
+			validstat = usablestat(CHA, UseRoll);
+			if (!validstat)
+				cout << "Invalid selection" << endl;
+		}
+
+		cout << endl << "Are these stats okay? (Y/N)" << endl;	//confirm stat choice
+		cout << "STR: " << STR << endl << "DEX: " << DEX << endl << "CON: " << CON << endl
+			<< "INT: " << INT << endl << "WIS: " << WIS << endl << "CHA: " << CHA << endl << ">>";
+		cin >> ws;
+		user = getchar();
+		user = toupper(user);
+
+		if (!(user == 'Y' || user == 'N'))
+			cout << "invalid character" << endl << endl;
+		else
+			if (user == 'Y')
+			{
+				validchar = true;
+				statsselected = true;
+			}
+			else
+			{
+				validchar = true;
+				statsselected = false;
+				cout << endl;				//also print out stats again for user to look over
+				for (int i = 0; i < 6; i++)
+					cout << Roll[i] << endl;
+			}
+	}
+
+	return;
+}
+
+void classselection()
+{
+	int classnumber;
+	bool classselected = false;
+	while (!classselected)
+	{
+		cout << endl << "Enter number of class:" << endl;
+		cout << "5. Fighter" << endl
+			<< "   Alignment: Any." << endl
+			<< "   Hit Die: D10" << endl
+			<< "   Class Skills: The fighter's class skills (and the key ability for each skill) are Climb (Str), Craft (Int), Handle Animal (Cha), Intimidate (Cha)," << endl
+			<< "   Jump (Str), Ride (Dex), and Swim (Str)." << endl
+			<< "   Skill Points at 1st Level: (2 + Int modifier) X 4." << endl
+			<< "   Skill Points at Each Additional Level: 2 + Int modifier." << endl
+			<< "   Weapon and Armor Proficiency: A fighter is proficient with all simple and martial weapons and with all armor (heavy, medium, and light) and shields (including" << endl
+			<< "   tower shields)." << endl
+			<< "   Bonus Feats: At 1st level, a fighter gets a bonus combat-oriented feat in addition to the feat that any 1st-level character gets and the bonus" << endl
+			<< "   feat granted to a human character.The fighter gains an additional bonus feat at 2nd level and every two fighter levels thereafter(4th, 6th, 8th, 10th, 12th, 14th, 16th, 18th, and 20th).These bonus" << endl
+			<< "   feats must be drawn from the feats noted as fighter bonus feats.A fighter must still meet all prerequisites for a bonus feat, including ability score and base attack bonus minimums." << endl << endl
+			<< "   These bonus feats are in addition to the feat that a character of any class gets from advancing levels.A fighter is not limited to the list of fighter bonus feats when choosing these feats. " << endl;
+
+		cin >> classnumber;
+		switch (classnumber)
+		{
+		case 1: //Barbarian Selected
+			classselected = true;
+			break;
+		case 2: //Bard Selected
+			classselected = true;
+			break;
+		case 3: //Cleric Selected
+			classselected = true;
+			break;
+		case 4: //Druid Selected
+			classselected = true;
+			break;
+		case 5: //Fighter Selected
+			classselected = true;
+			break;
+		case 6: //Monk Selected
+			classselected = true;
+			break;
+		case 7: //Paladin Selected
+			classselected = true;
+			break;
+		case 8: //Ranger Selected
+			classselected = true;
+			break;
+		case 9: //Rogue Selected
+			classselected = true;
+			break;
+		case 10: //Sorcerer Selected
+			classselected = true;
+			break;
+		case 11: //Wizard Selected
+			classselected = true;
+			break;
+		default:
+			cout << "Invalid Character" << endl;
+		}
+	}
+	return;
+}
+
+void raceselection()
+{
+	int racenumber;
+	bool raceselected = false;
+	while (!raceselected)
+	{
+		cout << endl << "Enter number of race:" << endl;
+		cout << "1.Human" << endl
+			<< "   Medium: As Medium creatures, humans have no special bonuses or penalties due to their size." << endl
+			<< "   Human base land speed is 30 feet." << endl
+			<< "   1 extra feat at 1st level." << endl
+			<< "   4 extra skill points at 1st level and 1 extra skill point at each additional level." << endl
+			<< "   Automatic Language: Common. Bonus Languages: Any (other than secret languages, such as Druidic)." << endl
+			<< "   Favored Class: Any" << endl << endl;
+
+		cout << "2.Dwarf" << endl
+			<< "   +2 Constitution, -2 Charisma" << endl
+			<< "   Medium: As Medium creatures, dwarves have no special bonuses or penalties due to their size." << endl
+			<< "   Dwarf base land speed is 20 feet. However, dwarves can move at this speed even when wearing medium or heavy armor or when carrying a medium or heavy load (unlike other creatures, whose speed is reduced in such situations)" << endl
+			<< "   Darkvision: Dwarves can see in the dark up to 60 feet. Darkvision is black and white only, but it is otherwise like normal sight, and dwarves can function just fine with no light at all." << endl
+			<< "   Stonecunning: This ability grants a dwarf a +2 racial bonus on Search checks to notice unusual stonework, such as sliding walls, stonework traps, new construction (even when built to match the" << endl
+			<< "      old), unsafe stone surfaces, shaky stone ceilings, and the like. Something that isn’t stone but that is disguised as stone also counts as unusual stonework. A dwarf who merely comes within 10 feet" << endl
+			<< "      of unusual stonework can make a Search check as if he were actively searching, and a dwarf can use the Search skill to find stonework traps as a rogue can. A dwarf can also intuit depth, sensing his" << endl
+			<< "      approximate depth underground as naturally as a human can sense which way is up." << endl
+			<< "   Weapon Familiarity: Dwarves may treat dwarven waraxes and dwarven urgroshes as martial weapons, rather than exotic weapons." << endl
+			<< "   Stability: A dwarf gains a +4 bonus on ability checks made to resist being bull rushed or tripped when standing on the ground (but not when climbing, flying, riding, or otherwise not standing firmly on the ground)." << endl
+			<< "   +2 racial bonus on saving throws against poison." << endl
+			<< "   +2 racial bonus on saving throws against spells and spell-like effects." << endl
+			<< "   +1 racial bonus on attack rolls against orcs and goblinoids." << endl
+			<< "   +4 dodge bonus to Armor Class against monsters of the giant type. Any time a creature loses its Dexterity bonus (if any) to Armor Class, such as when it’s caught flat-footed, it loses its dodge bonus, too." << endl
+			<< "   +2 racial bonus on Appraise checks that are related to stone or metal items." << endl
+			<< "   +2 racial bonus on Craft checks that are related to stone or metal." << endl
+			<< "   Automatic Languages: Common and Dwarven. Bonus Languages: Giant, Gnome, Goblin, Orc, Terran, and Undercommon." << endl
+			<< "   Favored Class: Fighter." << endl << endl;
+
+		cout << "3.Elf" << endl
+			<< "   +2 Dexterity, -2 Constitution." << endl
+			<< "   Medium: As Medium creatures, elves have no special bonuses or penalties due to their size." << endl
+			<< "   Elf base land speed is 30 feet." << endl
+			<< "   Immunity to magic sleep effects, and a +2 racial saving throw bonus against enchantment spells or effects." << endl
+			<< "   Low-Light Vision: An elf can see twice as far as a human in starlight, moonlight, torchlight, and similar conditions of poor illumination. She retains the ability to distinguish color and detail under these conditions." << endl
+			<< "   Weapon Proficiency: Elves receive the Martial Weapon Proficiency feats for the longsword, rapier, longbow (including composite longbow), and shortbow (including composite shortbow) as bonus feats." << endl
+			<< "   +2 racial bonus on Listen, Search, and Spot checks. An elf who merely passes within 5 feet of a secret or concealed door is entitled to a Search check to notice it as if she were actively looking for it." << endl
+			<< "   Automatic Languages: Common and Elven. Bonus Languages: Draconic, Gnoll, Gnome, Goblin, Orc, and Sylvan." << endl
+			<< "   Favored Class: Wizard." << endl << endl;
+
+		cout << "4.Gnome" << endl
+			<< "   +2 Constitution, -2 Strength." << endl
+			<< "   Small: As a Small creature, a gnome gains a +1 size bonus to Armor Class, a +1 size bonus on attack rolls, and a +4 size bonus on Hide checks, but he uses smaller weapons than humans use, and his" << endl
+			<< "      lifting and carrying limits are three-quarters of those of a Medium character." << endl
+			<< "   Gnome base land speed is 20 feet." << endl
+			<< "   Low-Light Vision: A gnome can see twice as far as a human in starlight, moonlight, torchlight, and similar conditions of poor illumination. He retains the ability to distinguish color and detail under these conditions." << endl
+			<< "   Weapon Familiarity: Gnomes may treat gnome hooked hammers as martial weapons rather than exotic weapons." << endl
+			<< "   +2 racial bonus on saving throws against illusions." << endl
+			<< "   Add +1 to the Difficulty Class for all saving throws against illusion spells cast by gnomes. This adjustment stacks with those from similar effects." << endl
+			<< "   +1 racial bonus on attack rolls against kobolds and goblinoids." << endl
+			<< "   +4 dodge bonus to Armor Class against monsters of the giant type. Any time a creature loses its Dexterity bonus (if any) to Armor Class, such as when it’s caught flat-footed, it loses its dodge bonus, too." << endl
+			<< "   +2 racial bonus on Listen checks." << endl
+			<< "   +2 racial bonus on Craft (alchemy) checks." << endl
+			<< "   Automatic Languages: Common and Gnome. Bonus Languages: Draconic, Dwarven, Elven, Giant, Goblin, and Orc. In addition, a gnome can speak with a burrowing mammal (a badger, fox, rabbit, or" << endl
+			<< "      the like, see below). This ability is innate to gnomes. See the speak with animals spell description." << endl
+			<< "   Spell-Like Abilities: 1/day—speak with animals (burrowing mammal only, duration 1 minute). A gnome with a Charisma score of at least 10 also has the following spell-like abilities: 1/day—dancing" << endl
+			<< "      lights, ghost sound, prestidigitation. Caster level 1st; save DC 10 + gnome’s Cha modifier + spell level." << endl
+			<< "   Favored Class: Bard." << endl << endl;
+
+		cout << "5.Half-Elf" << endl
+			<< "   Medium: As Medium creatures, half-elves have no special bonuses or penalties due to their size." << endl
+			<< "   Half-elf base land speed is 30 feet." << endl
+			<< "   Immunity to sleep spells and similar magical effects, and a +2 racial bonus on saving throws against enchantment spells or effects." << endl
+			<< "   Low-Light Vision: A half-elf can see twice as far as a human in starlight, moonlight, torchlight, and similar conditions of poor illumination. She retains the ability to distinguish color and detail under these conditions" << endl
+			<< "   +1 racial bonus on Listen, Search, and Spot checks." << endl
+			<< "   +2 racial bonus on Diplomacy and Gather Information checks." << endl
+			<< "   Elven Blood: For all effects related to race, a half-elf is considered an elf." << endl
+			<< "   Automatic Languages: Common and Elven. Bonus Languages: Any (other than secret languages, such as Druidic)." << endl
+			<< "   Favored Class: Any." << endl << endl;
+
+		cout << "6.Half-Orc" << endl
+			<< "   +2 Strength, -2 Intelligence, -2 Charisma." << endl
+			<< "      A half-orc’s starting Intelligence score is always at least 3. If this adjustment would lower the character’s score to 1 or 2, his score is nevertheless 3." << endl
+			<< "   Medium: As Medium creatures, half-orcs have no special bonuses or penalties due to their size." << endl
+			<< "   Half-orc base land speed is 30 feet." << endl
+			<< "   Darkvision: Half-orcs (and orcs) can see in the dark up to 60 feet. Darkvision is black and white only, but it is otherwise like normal sight, and half-orcs can function just fine with no light at all." << endl
+			<< "   Orc Blood: For all effects related to race, a half-orc is considered an orc." << endl
+			<< "   Automatic Languages: Common and Orc. Bonus Languages: Draconic, Giant, Gnoll, Goblin, and Abyssal." << endl
+			<< "   Favored Class: Barbarian." << endl << endl;
+
+		cout << "7.Halfling" << endl
+			<< "   +2 Dexterity, -2 Strength." << endl
+			<< "   Small: As a Small creature, a halfling gains a +1 size bonus to Armor Class, a +1 size bonus on attack rolls, and a +4 size bonus on Hide checks, but she uses smaller weapons than humans use, and" << endl
+			<< "      her lifting and carrying limits are three-quarters of those of a Medium character." << endl
+			<< "   Halfling base land speed is 20 feet." << endl
+			<< "   +2 racial bonus on Climb, Jump, Listen, and Move Silently checks." << endl
+			<< "   +1 racial bonus on all saving throws." << endl
+			<< "   +2 morale bonus on saving throws against fear: This bonus stacks with the halfling’s +1 bonus on saving throws in general." << endl
+			<< "   +1 racial bonus on attack rolls with thrown weapons and slings." << endl
+			<< "   Automatic Languages: Common and Halfling. Bonus Languages: Dwarven, Elven, Gnome, Goblin, and Orc." << endl
+			<< "   Favored Class: Rogue." << endl << endl;
+
+		cout << "8.Orc" << endl
+			<< "   +4 Strength, -2 Intelligence, -2 Wisdom, -2 Charisma." << endl
+			<< "   An orc’s base land speed is 30 feet." << endl
+			<< "   Darkvision out to 60 feet." << endl
+			<< "   Light Sensitivity: Orcs are dazzled in bright sunlight or within the radius of a daylight spell." << endl
+			<< "   Automatic Languages: Common, Orc. Bonus Languages: Dwarven, Giant, Gnoll, Goblin, Undercommon." << endl
+			<< "   Favored Class: Barbarian." << endl << endl << ">>";
+
+		cin >> racenumber;
+		switch (racenumber)
+		{
+		case 1:	//Human
+			strcpy_s(CharRace, "Human");
+			Size = Medium;
+			BaseSpeed = 30;
+			raceselected = true;
+			break;
+		case 2: //Dwarf
+			strcpy_s(CharRace, "Dwarf");
+			CON = CON + 2;
+			CHA = CHA - 2;
+			Size = Medium;
+			BaseSpeed = 20;
+			raceselected = true;
+			break;
+		case 3: //Elf
+			strcpy_s(CharRace, "Elf");
+			DEX = DEX + 2;
+			CON = CON - 2;
+			Size = Medium;
+			BaseSpeed = 30;
+			raceselected = true;
+			break;
+		case 4: //Gnome
+			strcpy_s(CharRace, "Gnome");
+			STR = STR - 2;
+			CON = CON + 2;
+			Size = Small;
+			BaseSpeed = 20;
+			raceselected = true;
+			break;
+		case 5: //Half-Elf
+			strcpy_s(CharRace, "Half-Elf");
+			Size = Medium;
+			BaseSpeed = 30;
+			raceselected = true;
+			break;
+		case 6: //Half-Orc
+			strcpy_s(CharRace, "Half-Orc");
+			STR = STR + 2;
+			INT = INT - 2;
+			CHA = CHA - 2;
+			Size = Medium;
+			BaseSpeed = 30;
+			raceselected = true;
+			break;
+		case 7: //Halfling
+			strcpy_s(CharRace, "Halfling");
+			STR = STR - 2;
+			DEX = DEX + 2;
+			Size = Small;
+			BaseSpeed = 20;
+			raceselected = true;
+			break;
+		case 8: //Orc
+			strcpy_s(CharRace, "Orc");
+			STR = STR + 4;
+			INT = INT - 2;
+			WIS = WIS - 2;
+			CHA = CHA - 2;
+			Size = Medium;
+			BaseSpeed = 30;
+			raceselected = true;
+			break;
+		default:
+			cout << "Invalid selection" << endl;
+		}
+	}
+}
+
+bool usablestat(int stat, int UseRoll[6])
+{
+	bool usable = false;
+
+	for (int i = 0; i < 6; i++)
+	{
+		if (stat == UseRoll[i])
+		{
+			usable = true;
+			UseRoll[i] = 0;
+			break;
+		}
+	}
+
+	return usable;
+}
+
+void getstatmod()
+{
+	STRMOD = floor((STR - 10) / 2);
+	DEXMOD = floor((DEX - 10) / 2);
+	CONMOD = floor((CON - 10) / 2);
+	INTMOD = floor((INT - 10) / 2);
+	WISMOD = floor((WIS - 10) / 2);
+	CHAMOD = floor((CHA - 10) / 2);
+
+	return;
+}
+
+void levelup()
+{
+	int x = Level;
+	int EXPNext;
+	int statpick;
+	bool done = false;
+
+	EXPNext = x * (x - 1) * 500;
+	if (EXP >= EXPNext)	//check to see if character has enough EXP
+	{
+		Level++;
+		cout << "Level up!" << endl << endl
+			<< "Level increased to " << Level << endl;
+	}
+	if (!(Level % 4))	//see if time to increase a stat
+	{
+		while (!done)
+		{
+			cout << "Pick a stat to increase by 1 point" << endl
+				<< "1. Strength" << endl << "2. Dexterity" << endl
+				<< "3. Constitution" << endl << "4. Intelligence" << endl
+				<< "5. Wisdom" << endl << "6. Charisma" << endl << ">>";
+			cin >> statpick;
+			switch (statpick)
+			{
+			case 1:
+				STR++;
+				done = true;
+				break;
+			case 2:
+				DEX++;
+				done = true;
+				break;
+			case 3:
+				CON++;
+				done = true;
+				break;
+			case 4:
+				INT++;
+				done = true;
+				break;
+			case 5:
+				WIS++;
+				done = true;
+				break;
+			case 6:
+				CHA++;
+				done = true;
+				break;
+			default:
+				cout << "Invalid selection" << endl;
+			}
+		}
+	}
+
+	system("Pause");
+	return;
+}
+
+void displaycharacterdata()
+{
+	cout << "Level: " << Level << endl
+		<< "Class: " << CharClass << endl
+		<< "Race: " << CharRace << endl
+		<< "Size: " << Size << endl
+		<< "Land Speed: " << BaseSpeed - SpeedPenalty << endl << endl
+		<< "STR: " << setw(2) << STR << "   " << "STR MOD: " << setw(3) << STRMOD << endl
+		<< "DEX: " << setw(2) << DEX << "   " << "DEX MOD: " << setw(3) << DEXMOD << endl
+		<< "CON: " << setw(2) << CON << "   " << "CON MOD: " << setw(3) << CONMOD << endl
+		<< "INT: " << setw(2) << INT << "   " << "INT MOD: " << setw(3) << INTMOD << endl
+		<< "WIS: " << setw(2) << WIS << "   " << "WIS MOD: " << setw(3) << WISMOD << endl
+		<< "CHA: " << setw(2) << CHA << "   " << "CHA MOD: " << setw(3) << CHAMOD << endl << endl;
+
+	system("Pause");
+	return;
+}
+
+void armory(Armor armordata[], int armorcount, OwnedItems items[])
+{
+	bool instore = true;
+	int selection;
+	char userok;
+	bool done = false;
+
+	while (instore)
+	{
+		int userselection;
+		cout << "The armorer sees you as you enter his shop and greets you with a smile. He asks how he can help you." << endl;
+		cout << "1. I would like to buy some weapons" << endl
+			<< "2. I would like to buy some armor" << endl
+			<< "3. I will be leaving now" << endl << ">>";
+
+		cin >> selection;
+		switch (selection)
+		{
+		case 1: //buy weapons
+			break;
+
+		case 2: //buy armor
+			for (int i = 0; i < armorcount; i++)
+			{
+				cout << i + 1 << ". ";
+				armordata[i].showArmorData();
+			}
+			do
+			{
+				cout << "Which would you like?" << endl << ">>";
+				cin >> userselection;
+				armordata[userselection - 1].checkCost();
+				cin >> userok;
+				userok = toupper(userok);
+				while (true)
+				{
+					if (userok == 'Y')
+						if (Gold >= armordata[userselection - 1].getCost())
+						{
+							Gold = Gold - armordata[userselection - 1].getCost();
+							TotalItems++;
+							items[TotalItems].setItemData(armordata[userselection - 1].getType(),
+														armordata[userselection - 1].getName(),
+														armordata[userselection - 1].getCost(),
+														armordata[userselection - 1].getACBonus(),
+														armordata[userselection - 1].getMaxDex(),
+														armordata[userselection - 1].getCheckPenalty(),
+														armordata[userselection - 1].getWeight());
+							break;
+						}
+						else
+						{
+							cout << "You do not have enough gold for that." << endl;
+							break;
+						}
+					else if (userok == 'N')
+						break;
+					else
+						cout << "Invalid character" << endl;
+				}
+				while (true)
+				{
+					cout << "Would you like anything else? (Y/N)" << endl << ">>";
+					cin >> userok;
+					userok = toupper(userok);
+					if (userok == 'Y')
+					{
+						done = false;
+						break;
+					}
+					else if (userok == 'N')
+					{
+						done = true;
+						break;
+					}
+					else
+						cout << "Invalid character" << endl;
+				}
+			} while (!done);
+			break;
+
+		case 3: //leave store
+			cout << "Thank you for your patronage. Do come again!" << endl;
+			instore = false;
+			break;
+
+		default:
+			cout << "Invalid selection" << endl;
+		}
+	}
+
+	system("Pause");
+	return;
+}
+
+void getAC()
+{
+	AC = 10;
+}
